@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt;
 use xmip_authenticate::{Acceptance, Presented};
 use xmip_context::{Alignment, OnMisalignment};
-use xmip_core::ArtifactId;
+use xmip_core::{ArtifactId, Arriving};
 use xmip_stream::Stream;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -100,6 +100,16 @@ pub struct ReceivePort {
 #[derive(Clone, Debug)]
 pub struct ReceivedStream {
     pub stream: Stream,
+
+    /// How it got here: pushed, detected or scheduled.
+    ///
+    /// Set by the transport, which is the only thing that knows. A Receive
+    /// Location watching a folder produces [`Arriving::Detected`]; the same
+    /// folder polled on a timer produces [`Arriving::Scheduled`]; an HTTP
+    /// endpoint produces [`Arriving::Pushed`]. Defaults to pushed because that
+    /// is the case with a caller to answer to.
+    pub arriving: Arriving,
+
     pub source_uri: String,
     /// What the transport observed. `None` only where the technology offers
     /// nothing at all to observe.
@@ -112,10 +122,26 @@ impl ReceivedStream {
     pub fn new(stream: Stream, source_uri: impl Into<String>) -> Self {
         Self {
             stream,
+            arriving: Arriving::Pushed,
             source_uri: source_uri.into(),
             presented: None,
             transport_properties: Vec::new(),
         }
+    }
+
+    /// Xmip was watching and it appeared. Nobody connected.
+    #[must_use]
+    pub const fn detected(mut self) -> Self {
+        self.arriving = Arriving::Detected;
+        self
+    }
+
+    /// A timer fired and Xmip went and fetched it. Xmip is the client, so any
+    /// credential in play is Xmip's own and proves nothing about the source.
+    #[must_use]
+    pub const fn scheduled(mut self) -> Self {
+        self.arriving = Arriving::Scheduled;
+        self
     }
 
     #[must_use]
@@ -161,7 +187,7 @@ pub trait ReceivePublisher: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xmip_party::mechanism;
+    use xmip_core::mechanism;
 
     fn location() -> ReceiveLocation {
         ReceiveLocation::new(
@@ -209,7 +235,7 @@ mod tests {
             Stream::new(StreamId::new(1), b"<order/>".to_vec(), None),
             "https://xmip.example/in/partner-x",
         )
-        .presenting(Presented::new(
+        .presenting(Presented::passed(
             mechanism::mutual_tls(),
             "CN=partner-x.example",
         ));

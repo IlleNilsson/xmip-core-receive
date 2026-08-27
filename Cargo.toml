@@ -12,6 +12,6 @@ description = "Xmip Receive Ports and Receive Locations, and what arrives at the
 [dependencies]
 xmip-core = { git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
 xmip-stream = { package = "xmip-core-stream", git = "https://github.com/IlleNilsson/xmip-core-stream", branch = "main" }
-xmip-party = { package = "xmip-core-party", git = "https://github.com/IlleNilsson/xmip-core-party", branch = "main" }
 xmip-context = { package = "xmip-core-context", git = "https://github.com/IlleNilsson/xmip-core-context", branch = "main" }
+xmip-identify = { package = "xmip-core-identify", git = "https://github.com/IlleNilsson/xmip-core-identify", branch = "main" }
 xmip-authenticate = { package = "xmip-core-authenticate", git = "https://github.com/IlleNilsson/xmip-core-authenticate", branch = "main" }
