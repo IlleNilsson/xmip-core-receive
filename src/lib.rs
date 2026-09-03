@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt;
 use xmip_authenticate::{Acceptance, Presented};
 use xmip_context::{Alignment, OnMisalignment};
-use xmip_core::{ArtifactId, Arriving};
+use xmip_core::{Arriving, ArtifactId};
 use xmip_stream::Stream;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
