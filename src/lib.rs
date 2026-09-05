@@ -2,12 +2,12 @@
 
 //! Receive Ports, Receive Locations, and what arrives at them.
 
+use authenticate::{Acceptance, Presented};
+use context::{Alignment, OnMisalignment};
 use std::error::Error;
 use std::fmt;
-use xmip_authenticate::{Acceptance, Presented};
-use xmip_context::{Alignment, OnMisalignment};
-use xmip_core::{Arriving, ArtifactId};
-use xmip_stream::Stream;
+use stream::Stream;
+use xcore::{Arriving, ArtifactId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReceiveLocationType {
@@ -187,7 +187,7 @@ pub trait ReceivePublisher: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xmip_core::mechanism;
+    use xcore::mechanism;
 
     fn location() -> ReceiveLocation {
         ReceiveLocation::new(
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn what_arrives_is_not_yet_authenticated() {
-        use xmip_core::StreamId;
+        use xcore::StreamId;
 
         let received = ReceivedStream::new(
             Stream::new(StreamId::new(1), b"<order/>".to_vec(), None),
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn a_technology_with_nothing_to_observe_presents_nothing() {
-        use xmip_core::StreamId;
+        use xcore::StreamId;
 
         // Modbus, CAN bus, a raw TCP socket. The circumstance becomes the
         // identity later; the transport itself saw no credential.
