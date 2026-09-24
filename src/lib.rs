@@ -2,8 +2,9 @@
 
 //! Receive Ports, Receive Locations, and what arrives at them.
 
-use authenticate::{Acceptance, Presented};
+use authenticate::Acceptance;
 use context::{Alignment, OnMisalignment};
+use identify::Presented;
 use stream::Stream;
 use xcore::{Arriving, ArtifactId};
 
