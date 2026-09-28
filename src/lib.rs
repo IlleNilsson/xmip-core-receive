@@ -1,19 +1,21 @@
 #![forbid(unsafe_code)]
 
-//! Receive Ports, Receive Locations, and what arrives at them.
+//! Receive Ports, and what arrives at a Receive Location before any gate has
+//! run.
+//!
+//! A Receive Location is configured once, as `xmip-core-configure`'s
+//! `ConfiguredLocation` — its transport, its address, its settings and the
+//! closed set it accepts (ADR-0019 clause 1) — and the runtime builds the
+//! Location's transport from it through `xmip-core-transport`, the one trait
+//! every protocol implements in both directions (ADR-0010). What is here is
+//! what neither of those holds: the alignment policy a Receive Location keeps
+//! between the two identity layers, and the Stream as it came off the
+//! transport, with how it got there and what the transport observed.
 
-use authenticate::Acceptance;
 use context::{Alignment, OnMisalignment};
 use identify::Presented;
 use stream::Stream;
 use xcore::{Arriving, ArtifactId};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReceiveLocationType {
-    Composite,
-    DataTransfer,
-    BatchLoad,
-}
 
 /// What a Receive Location does when the two identity layers disagree.
 ///
@@ -24,62 +26,6 @@ pub enum ReceiveLocationType {
 pub struct IdentityPolicy {
     pub alignment: Alignment,
     pub on_misalignment: OnMisalignment,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReceiveLocation {
-    pub artifact_id: ArtifactId,
-    pub name: String,
-    pub uri: String,
-    pub transport: String,
-    pub location_type: ReceiveLocationType,
-
-    /// The closed set of identities and mechanisms this location takes.
-    ///
-    /// ADR-0019 clause 1. Left as [`Acceptance::closed`], the location accepts
-    /// nothing — an unconfigured endpoint is closed, not open.
-    pub accept: Acceptance,
-
-    pub identity_policy: IdentityPolicy,
-}
-
-impl ReceiveLocation {
-    #[must_use]
-    pub fn new(
-        artifact_id: ArtifactId,
-        name: impl Into<String>,
-        uri: impl Into<String>,
-        transport: impl Into<String>,
-        location_type: ReceiveLocationType,
-    ) -> Self {
-        Self {
-            artifact_id,
-            name: name.into(),
-            uri: uri.into(),
-            transport: transport.into(),
-            location_type,
-            accept: Acceptance::closed(),
-            identity_policy: IdentityPolicy::default(),
-        }
-    }
-
-    #[must_use]
-    pub fn accepting(mut self, accept: Acceptance) -> Self {
-        self.accept = accept;
-        self
-    }
-
-    #[must_use]
-    pub const fn aligning(mut self, policy: IdentityPolicy) -> Self {
-        self.identity_policy = policy;
-        self
-    }
-
-    /// Whether this location can take anything at all.
-    #[must_use]
-    pub fn is_open(&self) -> bool {
-        !self.accept.is_closed()
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -156,60 +102,16 @@ impl ReceivedStream {
     }
 }
 
-xcore::declare_error!(ReceiveError);
-
-pub trait ReceiveTransport: Send + Sync {
-    fn technology(&self) -> &'static str;
-    fn receive(&self, location: &ReceiveLocation) -> Result<Option<ReceivedStream>, ReceiveError>;
-}
-
-pub trait ReceivePublisher: Send + Sync {
-    fn publish(
-        &self,
-        port: &ReceivePort,
-        location: &ReceiveLocation,
-        received: ReceivedStream,
-    ) -> Result<(), ReceiveError>;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xcore::mechanism;
-
-    fn location() -> ReceiveLocation {
-        ReceiveLocation::new(
-            ArtifactId::new(1),
-            "partner-x",
-            "https://xmip.example/in/partner-x",
-            "https",
-            ReceiveLocationType::DataTransfer,
-        )
-    }
-
-    #[test]
-    fn an_unconfigured_location_takes_nothing() {
-        assert!(!location().is_open());
-    }
-
-    #[test]
-    fn a_location_declares_a_closed_set() {
-        let configured = location().accepting(
-            Acceptance::closed()
-                .accepting(&mechanism::mutual_tls())
-                .accepting(&mechanism::oauth2()),
-        );
-
-        assert!(configured.is_open());
-        assert!(configured.accept.declares(&mechanism::mutual_tls()));
-        assert!(!configured.accept.declares(&mechanism::api_key()));
-    }
+    use xcore::{StreamId, mechanism};
 
     #[test]
     fn the_default_policy_never_compares_the_two_layers() {
         // The relaying case. One authenticated connection carrying traffic for
         // many Parties is ordinary, not a fault.
-        let policy = location().identity_policy;
+        let policy = IdentityPolicy::default();
 
         assert_eq!(policy.alignment, Alignment::None);
         assert_eq!(policy.on_misalignment, OnMisalignment::Accept);
@@ -217,8 +119,6 @@ mod tests {
 
     #[test]
     fn what_arrives_is_not_yet_authenticated() {
-        use xcore::StreamId;
-
         let received = ReceivedStream::new(
             Stream::new(StreamId::new(1), b"<order/>".to_vec(), None),
             "https://xmip.example/in/partner-x",
@@ -235,8 +135,6 @@ mod tests {
 
     #[test]
     fn a_technology_with_nothing_to_observe_presents_nothing() {
-        use xcore::StreamId;
-
         // Modbus, CAN bus, a raw TCP socket. The circumstance becomes the
         // identity later; the transport itself saw no credential.
         let received = ReceivedStream::new(
@@ -245,5 +143,6 @@ mod tests {
         );
 
         assert!(received.presented.is_none());
+        assert_eq!(received.arriving, Arriving::Pushed);
     }
 }

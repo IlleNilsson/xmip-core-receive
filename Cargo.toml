@@ -7,14 +7,13 @@ version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/IlleNilsson/xmip-core-receive"
-description = "Xmip Receive Ports and Receive Locations, and what arrives at them."
+description = "Xmip Receive Ports, a Receive Location's identity policy, and what arrives at a Receive Location before any gate."
 
 [dependencies]
 xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
 stream = { package = "xmip-core-stream", git = "https://github.com/IlleNilsson/xmip-core-stream", branch = "main" }
 context = { package = "xmip-core-context", git = "https://github.com/IlleNilsson/xmip-core-context", branch = "main" }
 identify = { package = "xmip-core-identify", git = "https://github.com/IlleNilsson/xmip-core-identify", branch = "main" }
-authenticate = { package = "xmip-core-authenticate", git = "https://github.com/IlleNilsson/xmip-core-authenticate", branch = "main" }
 
 [profile.dev.package."*"]
 opt-level = 3
