@@ -121,11 +121,11 @@ mod tests {
     fn what_arrives_is_not_yet_authenticated() {
         let received = ReceivedStream::new(
             Stream::new(StreamId::new(1), b"<order/>".to_vec(), None),
-            "https://xmip.example/in/partner-x",
+            "https://xmip.example/in/party-x",
         )
         .presenting(Presented::passed(
             mechanism::mutual_tls(),
-            "CN=partner-x.example",
+            "CN=party-x.example",
         ));
 
         // A credential was observed. Whether it holds is the gate's question,
