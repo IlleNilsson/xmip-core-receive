@@ -9,12 +9,15 @@
 //! Location's transport from it through `xmip-core-transport`, the one trait
 //! every protocol implements in both directions (ADR-0010). What is here is
 //! what neither of those holds: the alignment policy a Receive Location keeps
-//! between the two identity layers, and the Stream as it came off the
-//! transport, with how it got there and what the transport observed.
+//! between the two identity layers, and the Stream as it comes off the
+//! transport — its body still to be read — with how it got there and what
+//! the transport observed.
+
+use std::fmt;
+use std::io::Read;
 
 use context::{Alignment, OnMisalignment};
 use identify::Presented;
-use stream::Stream;
 use xcore::{Arriving, ArtifactId};
 
 /// What a Receive Location does when the two identity layers disagree.
@@ -35,16 +38,22 @@ pub struct ReceivePort {
     pub version: String,
 }
 
-/// Bytes off a transport, and the credential the transport observed.
+/// A Stream coming off a transport — its body a reader, not yet read — and
+/// the credential the transport observed.
+///
+/// **The body is read once the transport gates have passed**, into the
+/// Ledger a chunk at a time (`runtime-model.md` section 5): nothing holds
+/// the whole Stream where the far end streams it, and a refused sender's
+/// content is never read.
 ///
 /// **Nothing here is authenticated.** The transport extracts what it can see —
 /// a client certificate, an `Authorization` header, the path and permissions of
 /// a drop folder — and the gate runs afterwards. This previously carried a
 /// resolved `PartyId`, which presumed the answer to a question that had not yet
 /// been asked.
-#[derive(Clone, Debug)]
 pub struct ReceivedStream {
-    pub stream: Stream,
+    /// The content, read as it is asked for.
+    pub body: Box<dyn Read + Send>,
 
     /// How it got here: pushed, detected or scheduled.
     ///
@@ -64,9 +73,9 @@ pub struct ReceivedStream {
 
 impl ReceivedStream {
     #[must_use]
-    pub fn new(stream: Stream, source_uri: impl Into<String>) -> Self {
+    pub fn new(body: impl Read + Send + 'static, source_uri: impl Into<String>) -> Self {
         Self {
-            stream,
+            body: Box::new(body),
             arriving: Arriving::Pushed,
             source_uri: source_uri.into(),
             presented: None,
@@ -102,10 +111,21 @@ impl ReceivedStream {
     }
 }
 
+impl fmt::Debug for ReceivedStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReceivedStream")
+            .field("arriving", &self.arriving)
+            .field("source_uri", &self.source_uri)
+            .field("presented", &self.presented)
+            .field("transport_properties", &self.transport_properties)
+            .finish_non_exhaustive()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xcore::{StreamId, mechanism};
+    use xcore::mechanism;
 
     #[test]
     fn the_default_policy_never_compares_the_two_layers() {
@@ -119,14 +139,10 @@ mod tests {
 
     #[test]
     fn what_arrives_is_not_yet_authenticated() {
-        let received = ReceivedStream::new(
-            Stream::new(StreamId::new(1), b"<order/>".to_vec(), None),
-            "https://xmip.example/in/party-x",
-        )
-        .presenting(Presented::passed(
-            mechanism::mutual_tls(),
-            "CN=party-x.example",
-        ));
+        let received =
+            ReceivedStream::new(&b"<order/>"[..], "https://xmip.example/in/party-x").presenting(
+                Presented::passed(mechanism::mutual_tls(), "CN=party-x.example"),
+            );
 
         // A credential was observed. Whether it holds is the gate's question,
         // and there is nowhere here to record an answer to it.
@@ -137,10 +153,7 @@ mod tests {
     fn a_technology_with_nothing_to_observe_presents_nothing() {
         // Modbus, CAN bus, a raw TCP socket. The circumstance becomes the
         // identity later; the transport itself saw no credential.
-        let received = ReceivedStream::new(
-            Stream::new(StreamId::new(2), b"\x01\x02".to_vec(), None),
-            "tcp://10.0.0.4:502",
-        );
+        let received = ReceivedStream::new(&b"\x01\x02"[..], "tcp://10.0.0.4:502");
 
         assert!(received.presented.is_none());
         assert_eq!(received.arriving, Arriving::Pushed);
