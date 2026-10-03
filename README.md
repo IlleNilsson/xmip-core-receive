@@ -4,8 +4,10 @@ Receive Ports, a Receive Location's identity policy, and what arrives at a
 Receive Location before any gate has run: the `ReceivePort` that binds
 arrivals into the topology, the `IdentityPolicy` a Receive Location keeps
 between the two identity layers (ADR-0019 clause 7), and the
-`ReceivedStream` — the Stream off a transport, how it got there and what the
-transport observed.
+`ReceivedStream` — the Stream off a transport, its body a reader not yet
+read, how it got there and what the transport observed. The runtime reads the
+body into the Ledger a chunk at a time once the transport gates have passed,
+so nothing holds the whole Stream where the far end streams it.
 
 A Receive Location is configured once, as `xmip-core-configure`'s
 `ConfiguredLocation`, with the closed set of mechanisms it accepts
