@@ -10,15 +10,17 @@
 //! every protocol implements in both directions (ADR-0010). What is here is
 //! what neither of those holds: the alignment policy a Receive Location keeps
 //! between the two identity layers, and the Stream as it comes off the
-//! transport — its body still to be read — with how it got there and what
-//! the transport observed.
+//! transport — its body still to be read — with how it got there, what the
+//! transport observed and the headers its protocol delivered.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::io::Read;
 
+use context::property;
 use context::{Alignment, OnMisalignment};
 use identify::Presented;
-use xcore::{Arriving, ArtifactId};
+use xcore::{Arriving, ArtifactId, ScalarValue};
 
 /// What a Receive Location does when the two identity layers disagree.
 ///
@@ -69,6 +71,12 @@ pub struct ReceivedStream {
     /// nothing at all to observe.
     pub presented: Option<Presented>,
     pub transport_properties: Vec<(String, String)>,
+    /// The headers its protocol delivered beside the body, each under the
+    /// name it travels by on the arrival and in the Message Context alike —
+    /// `<protocol>.header.<name>`, built by `context::property::header` —
+    /// in the order they came. The runtime writes them into the Message
+    /// Context at arrival (ADR-0046, amendment 2026-09-25, later).
+    pub headers: Vec<(String, ScalarValue)>,
 }
 
 impl ReceivedStream {
@@ -80,6 +88,7 @@ impl ReceivedStream {
             source_uri: source_uri.into(),
             presented: None,
             transport_properties: Vec::new(),
+            headers: Vec::new(),
         }
     }
 
@@ -109,6 +118,46 @@ impl ReceivedStream {
         self.transport_properties.push((name.into(), value.into()));
         self
     }
+
+    /// The same Stream, carrying the header `name` of `protocol` as
+    /// `<protocol>.header.<name>` ([`property::header`]), its case folded
+    /// where the protocol folds it. A name that comes again, in that
+    /// protocol's spelling, joins its text to the first with `", "` — RFC
+    /// 9110 section 5.3's one field value — and a value that is not text
+    /// takes the place of the first.
+    #[must_use]
+    pub fn with_header(mut self, protocol: &str, name: &str, value: ScalarValue) -> Self {
+        let key = property::header(protocol, name);
+        let Some((_, kept)) = self.headers.iter_mut().find(|(kept, _)| *kept == key) else {
+            self.headers.push((key, value));
+            return self;
+        };
+        match (kept, value) {
+            (ScalarValue::Text(kept), ScalarValue::Text(more)) => {
+                kept.push_str(", ");
+                kept.push_str(&more);
+            }
+            (kept, value) => *kept = value,
+        }
+        self
+    }
+
+    /// What the transport identifiers read off the arrival: what the
+    /// transport observed, then every header whose value is text, under the
+    /// name it travels by — `http.header.authorization` among them. Borrowed
+    /// where no header was handed.
+    #[must_use]
+    pub fn observed(&self) -> Cow<'_, [(String, String)]> {
+        if self.headers.is_empty() {
+            return Cow::Borrowed(&self.transport_properties);
+        }
+        let mut observed = self.transport_properties.clone();
+        observed.extend(self.headers.iter().filter_map(|(name, value)| match value {
+            ScalarValue::Text(text) => Some((name.clone(), text.clone())),
+            _ => None,
+        }));
+        Cow::Owned(observed)
+    }
 }
 
 impl fmt::Debug for ReceivedStream {
@@ -118,6 +167,7 @@ impl fmt::Debug for ReceivedStream {
             .field("source_uri", &self.source_uri)
             .field("presented", &self.presented)
             .field("transport_properties", &self.transport_properties)
+            .field("headers", &self.headers)
             .finish_non_exhaustive()
     }
 }
@@ -157,5 +207,35 @@ mod tests {
 
         assert!(received.presented.is_none());
         assert_eq!(received.arriving, Arriving::Pushed);
+    }
+
+    #[test]
+    fn a_header_travels_under_its_protocol_folded_where_the_protocol_folds() {
+        let text = |value: &str| ScalarValue::Text(value.to_string());
+        let received = ReceivedStream::new(&b"{}"[..], "http://127.0.0.1:1/in")
+            .with_header("http", "Accept", text("text/xml"))
+            .with_header("http", "accept", text("application/json"))
+            .with_header("kafka", "Trace-Id", text("a1"))
+            .with_header("kafka", "trace-id", text("b2"))
+            .with_header("kafka", "raw", ScalarValue::Binary(vec![0xff]));
+
+        assert_eq!(
+            received.headers,
+            [
+                (
+                    "http.header.accept".to_string(),
+                    text("text/xml, application/json")
+                ),
+                ("kafka.header.Trace-Id".to_string(), text("a1")),
+                ("kafka.header.trace-id".to_string(), text("b2")),
+                (
+                    "kafka.header.raw".to_string(),
+                    ScalarValue::Binary(vec![0xff])
+                ),
+            ]
+        );
+        let observed = received.observed();
+        assert_eq!(observed.len(), 3, "bytes are not text to identify by");
+        assert_eq!(observed[0].0, "http.header.accept");
     }
 }
