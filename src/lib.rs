@@ -18,19 +18,23 @@ use std::fmt;
 use std::io::Read;
 
 use context::property;
-use context::{Alignment, OnMisalignment};
+use context::{Alignment, Minimum, OnMisalignment};
 use identify::Presented;
 use xcore::{Arriving, ArtifactId, ScalarValue};
 
-/// What a Receive Location does when the two identity layers disagree.
+/// What a Receive Location does when the two identity layers disagree, and
+/// the weakest verdict it takes on each.
 ///
 /// ADR-0019 clause 7. `none` and `accept` are the defaults because a default of
 /// `strict` would refuse every relayed integration on the first day, and the
-/// failure would present as a routing bug rather than a policy decision.
+/// failure would present as a routing bug rather than a policy decision. The
+/// minimum is `proven` on both layers unless the Location writes a weaker one
+/// (amendment 2026-10-31): a claim is taken only where configuration says so.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct IdentityPolicy {
     pub alignment: Alignment,
     pub on_misalignment: OnMisalignment,
+    pub minimum: Minimum,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -185,6 +189,9 @@ mod tests {
 
         assert_eq!(policy.alignment, Alignment::None);
         assert_eq!(policy.on_misalignment, OnMisalignment::Accept);
+        // And takes nothing short of proven on either layer, unless written.
+        assert_eq!(policy.minimum, Minimum::default());
+        assert_eq!(policy.minimum.transport, context::Required::Proven);
     }
 
     #[test]
