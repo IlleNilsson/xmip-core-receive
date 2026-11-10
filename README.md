@@ -19,5 +19,5 @@ It does not create the Message — the runtime's arrival does, once the
 transport gates have passed — and it does not send.
 
 `doc/architecture/runtime-model.md` sections 5 and 6 govern the receive
-chain, ADR-0010 the boundary with transport; `architecture.xmip` carries the
+chain, ADR-0010 the boundary with transport; `architecture.toml` carries the
 maturity.
