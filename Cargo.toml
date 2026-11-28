@@ -7,8 +7,8 @@ repository = "https://github.com/IlleNilsson/xmip-core-receive"
 description = "Xmip Receive Ports, a Receive Location's identity policy, and what arrives at a Receive Location before any gate."
 
 [dependencies]
-xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
-context = { package = "xmip-core-context", git = "https://github.com/IlleNilsson/xmip-core-context", branch = "main" }
-identify = { package = "xmip-core-identify", git = "https://github.com/IlleNilsson/xmip-core-identify", branch = "main" }
+xcore = { workspace = true }
+context = { workspace = true }
+identify = { workspace = true }
 
 [lints]
